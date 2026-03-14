@@ -1,0 +1,807 @@
+import { useState, useRef, useEffect, useCallback } from “react”;
+import { streamCadenceModel, runCadenceModel } from “../engine/classifier.js”;
+import { SPECIMENS } from “../data/specimens.js”;
+import { BEHAVIORAL_CLASSES, CLASS_ORDER } from “../data/behavioralClasses.js”;
+
+// ─────────────────────────────────────────────────────────────────
+// SandboxPanel — Live Classification Theater
+//
+// Three input modes:
+//   library  — pick from 29 validated specimens
+//   custom   — enter acoustic parameters manually
+//   json     — drag-and-drop or paste JSON
+//
+// Live theater: streams each rule decision in sequence with
+// animated score bars updating in real time. Expert observers
+// watch the model reason through the signal step by step.
+//
+// Post-classification: confirm/correct ground truth and add
+// the specimen to the library with full provenance.
+// ─────────────────────────────────────────────────────────────────
+
+const CLASS_COLORS = {
+CONTACT:   “#5DB8C8”,
+DIVE:      “#3A7BD5”,
+FORAGE:    “#44C88A”,
+NAVIGATE:  “#D4A843”,
+BROADCAST: “#A855D8”,
+};
+
+const CONTOUR_OPTIONS = [“rising”, “descending”, “flat”, “complex”];
+const BEHAVIOR_OPTIONS = [
+“Pod convergence”,
+“Dive initiation”,
+“Foraging spread formation”,
+“Sustained directional migration”,
+“Stationary broadcasting”,
+“Long-range contact — call-response exchange”,
+];
+
+// ── Utility ───────────────────────────────────────────────────────
+function normalizeSpecimen(s) {
+const af = s.acousticFeatures || {};
+return {
+peakFrequency_hz:       af.peakFrequency_hz   ?? af.peakFrequency_Hz   ?? af.peakFreq_hz ?? 500,
+duration_s:             af.duration_s          ?? 1.0,
+freqContour:            af.freqContour         ?? af.contourShape       ?? “flat”,
+interPulseInterval_ms:  af.interPulseInterval_ms ?? af.interCallInterval_ms ?? null,
+urgencyIndex:           af.urgencyIndex        ?? 0.3,
+repetitionHz:           af.repetitionHz        ?? af.repetitionRate_Hz ?? null,
+};
+}
+
+function groundTruthFromBehavior(behavior) {
+const map = {
+“Pod convergence”: “CONTACT”,
+“Long-range contact — call-response exchange”: “CONTACT”,
+“Dive initiation”: “DIVE”,
+“Foraging spread formation”: “FORAGE”,
+“Sustained directional migration”: “NAVIGATE”,
+“Stationary broadcasting”: “BROADCAST”,
+};
+return map[behavior] || null;
+}
+
+// ── Score bar ─────────────────────────────────────────────────────
+function ScoreBar({ label, value, color, isWinner }) {
+const pct = Math.round((value || 0) * 100);
+return (
+<div style={{ marginBottom: 6 }}>
+<div style={{ display: “flex”, justifyContent: “space-between”, marginBottom: 2 }}>
+<span style={{
+fontSize: 11, fontFamily: “‘Space Mono’, monospace”,
+color: isWinner ? color : “#8899aa”, fontWeight: isWinner ? 700 : 400,
+letterSpacing: “0.04em”,
+}}>{label}</span>
+<span style={{
+fontSize: 11, fontFamily: “‘Space Mono’, monospace”,
+color: isWinner ? color : “#667788”,
+}}>{pct}%</span>
+</div>
+<div style={{ height: 4, background: “#1a2535”, borderRadius: 2, overflow: “hidden” }}>
+<div style={{
+height: “100%”, width: `${pct}%`,
+background: isWinner ? color : “#2a3a50”,
+borderRadius: 2,
+transition: “width 0.4s cubic-bezier(0.4,0,0.2,1)”,
+}} />
+</div>
+</div>
+);
+}
+
+// ── Evidence step card ────────────────────────────────────────────
+function EvidenceCard({ step, entering }) {
+const isOverride = step.override || step.done;
+const borderColor = isOverride
+? (CLASS_COLORS[step.finalClass] || “#5DB8C8”)
+: “#2a3a50”;
+
+return (
+<div style={{
+borderLeft: `3px solid ${borderColor}`,
+paddingLeft: 12,
+marginBottom: 14,
+opacity: entering ? 0 : 1,
+transform: entering ? “translateY(8px)” : “translateY(0)”,
+transition: “opacity 0.35s ease, transform 0.35s ease”,
+}}>
+<div style={{ display: “flex”, alignItems: “center”, gap: 8, marginBottom: 4 }}>
+<span style={{
+fontSize: 10, fontFamily: “‘Space Mono’, monospace”,
+color: “#4a6080”, letterSpacing: “0.08em”,
+}}>STEP {step.step}</span>
+{isOverride && (
+<span style={{
+fontSize: 9, fontFamily: “‘Space Mono’, monospace”,
+background: CLASS_COLORS[step.finalClass] || “#5DB8C8”,
+color: “#000”, padding: “1px 6px”, borderRadius: 2,
+letterSpacing: “0.08em”, fontWeight: 700,
+}}>FINAL</span>
+)}
+</div>
+<div style={{
+fontSize: 12, fontFamily: “‘Space Mono’, monospace”,
+color: isOverride ? (CLASS_COLORS[step.finalClass] || “#5DB8C8”) : “#c8d8e8”,
+marginBottom: 4, fontWeight: isOverride ? 700 : 500,
+}}>{step.rule}</div>
+<div style={{
+fontSize: 11, color: “#6a8aaa”,
+fontFamily: “‘IBM Plex Mono’, monospace”,
+lineHeight: 1.5,
+}}>{step.rationale}</div>
+</div>
+);
+}
+
+// ── Library picker ────────────────────────────────────────────────
+function LibraryPicker({ onSelect }) {
+const [search, setSearch] = useState(””);
+const filtered = SPECIMENS.filter(s =>
+!search ||
+s.commonName.toLowerCase().includes(search.toLowerCase()) ||
+s.callType.toLowerCase().includes(search.toLowerCase()) ||
+(s.ocean_basin || “”).toLowerCase().includes(search.toLowerCase())
+);
+
+return (
+<div>
+<input
+value={search}
+onChange={e => setSearch(e.target.value)}
+placeholder=“Filter by species, call type, basin…”
+style={{
+width: “100%”, padding: “8px 12px”, marginBottom: 12,
+background: “#0d1520”, border: “1px solid #2a3a50”,
+color: “#c8d8e8”, borderRadius: 4, fontSize: 13,
+fontFamily: “‘IBM Plex Mono’, monospace”, boxSizing: “border-box”,
+}}
+/>
+<div style={{ maxHeight: 320, overflowY: “auto” }}>
+{filtered.map(s => (
+<button
+key={s.id}
+onClick={() => onSelect(s)}
+style={{
+display: “block”, width: “100%”, textAlign: “left”,
+padding: “10px 12px”, marginBottom: 4,
+background: “#0d1520”, border: “1px solid #1e2e40”,
+color: “#c8d8e8”, borderRadius: 4, cursor: “pointer”,
+transition: “border-color 0.2s, background 0.2s”,
+}}
+onMouseEnter={e => {
+e.currentTarget.style.background = “#121f30”;
+e.currentTarget.style.borderColor = “#3a5a70”;
+}}
+onMouseLeave={e => {
+e.currentTarget.style.background = “#0d1520”;
+e.currentTarget.style.borderColor = “#1e2e40”;
+}}
+>
+<div style={{ fontSize: 12, fontWeight: 600, color: “#e8f4ff”, marginBottom: 2 }}>
+{s.commonName}
+</div>
+<div style={{
+fontSize: 11, fontFamily: “‘Space Mono’, monospace”,
+color: “#4a7090”,
+}}>
+{s.callType} · {s.ocean_basin || “—”}
+</div>
+</button>
+))}
+</div>
+</div>
+);
+}
+
+// ── Custom entry form ─────────────────────────────────────────────
+function CustomForm({ onSubmit }) {
+const [form, setForm] = useState({
+species: “”, commonName: “”, callType: “”,
+peakFrequency_hz: “”, duration_s: “”, urgencyIndex: “”,
+interPulseInterval_ms: “”, repetitionHz: “”,
+freqContour: “flat”, observedBehavior: “”,
+});
+
+const set = (k, v) => setForm(f => ({ …f, [k]: v }));
+const num = v => v === “” ? null : parseFloat(v);
+
+const handleSubmit = () => {
+const features = {
+peakFrequency_hz: num(form.peakFrequency_hz) || 500,
+duration_s: num(form.duration_s) || 1.0,
+freqContour: form.freqContour,
+interPulseInterval_ms: num(form.interPulseInterval_ms),
+urgencyIndex: num(form.urgencyIndex) ?? 0.3,
+repetitionHz: num(form.repetitionHz),
+};
+const specimen = {
+id: `custom_${Date.now()}`,
+commonName: form.commonName || “Custom Specimen”,
+species: form.species || “Unknown”,
+callType: form.callType || “Custom”,
+ocean_basin: “Custom”,
+acousticFeatures: features,
+behavioralRecord: {
+groundTruth: groundTruthFromBehavior(form.observedBehavior),
+observedBehavior: form.observedBehavior,
+observerNotes: “Custom entry via sandbox.”,
+},
+custom: true,
+};
+onSubmit(specimen);
+};
+
+const field = (label, key, placeholder, type = “text”) => (
+<div style={{ marginBottom: 10 }}>
+<label style={{
+display: “block”, fontSize: 10,
+fontFamily: “‘Space Mono’, monospace”,
+color: “#4a7090”, marginBottom: 4, letterSpacing: “0.08em”,
+}}>{label}</label>
+<input
+type={type}
+value={form[key]}
+onChange={e => set(key, e.target.value)}
+placeholder={placeholder}
+style={{
+width: “100%”, padding: “7px 10px”,
+background: “#0d1520”, border: “1px solid #2a3a50”,
+color: “#c8d8e8”, borderRadius: 4, fontSize: 12,
+fontFamily: “‘IBM Plex Mono’, monospace”, boxSizing: “border-box”,
+}}
+/>
+</div>
+);
+
+const select = (label, key, options) => (
+<div style={{ marginBottom: 10 }}>
+<label style={{
+display: “block”, fontSize: 10,
+fontFamily: “‘Space Mono’, monospace”,
+color: “#4a7090”, marginBottom: 4, letterSpacing: “0.08em”,
+}}>{label}</label>
+<select
+value={form[key]}
+onChange={e => set(key, e.target.value)}
+style={{
+width: “100%”, padding: “7px 10px”,
+background: “#0d1520”, border: “1px solid #2a3a50”,
+color: “#c8d8e8”, borderRadius: 4, fontSize: 12,
+fontFamily: “‘IBM Plex Mono’, monospace”, boxSizing: “border-box”,
+}}
+>
+<option value="">— select —</option>
+{options.map(o => <option key={o} value={o}>{o}</option>)}
+</select>
+</div>
+);
+
+return (
+<div>
+<div style={{ display: “grid”, gridTemplateColumns: “1fr 1fr”, gap: “0 12px” }}>
+<div>{field(“SPECIES (scientific)”, “species”, “e.g. Eubalaena glacialis”)}</div>
+<div>{field(“COMMON NAME”, “commonName”, “e.g. North Atlantic Right Whale”)}</div>
+<div>{field(“CALL TYPE”, “callType”, “e.g. Upcall”)}</div>
+<div>{select(“FREQUENCY CONTOUR”, “freqContour”, CONTOUR_OPTIONS)}</div>
+<div>{field(“PEAK FREQUENCY (Hz)”, “peakFrequency_hz”, “e.g. 170”, “number”)}</div>
+<div>{field(“DURATION (s)”, “duration_s”, “e.g. 1.2”, “number”)}</div>
+<div>{field(“URGENCY INDEX (0–1)”, “urgencyIndex”, “e.g. 0.2”, “number”)}</div>
+<div>{field(“IPI (ms, optional)”, “interPulseInterval_ms”, “e.g. 260”, “number”)}</div>
+<div>{field(“REPETITION RATE (Hz, optional)”, “repetitionHz”, “e.g. 0.12”, “number”)}</div>
+<div>{select(“OBSERVED BEHAVIOR”, “observedBehavior”, BEHAVIOR_OPTIONS)}</div>
+</div>
+<button
+onClick={handleSubmit}
+style={{
+marginTop: 6, padding: “10px 20px”,
+background: “#1a3a5a”, border: “1px solid #3a6a8a”,
+color: “#5DB8C8”, borderRadius: 4, cursor: “pointer”,
+fontSize: 12, fontFamily: “‘Space Mono’, monospace”,
+letterSpacing: “0.08em”, fontWeight: 700,
+transition: “background 0.2s”,
+}}
+onMouseEnter={e => e.currentTarget.style.background = “#1e4060”}
+onMouseLeave={e => e.currentTarget.style.background = “#1a3a5a”}
+>
+RUN CLASSIFIER →
+</button>
+</div>
+);
+}
+
+// ── JSON import ───────────────────────────────────────────────────
+function JsonImport({ onSubmit }) {
+const [text, setText] = useState(””);
+const [error, setError] = useState(null);
+const [dragging, setDragging] = useState(false);
+
+const parse = (raw) => {
+try {
+const data = JSON.parse(raw);
+const specimen = {
+id: `import_${Date.now()}`,
+commonName: data.commonName || data.species || “Imported Specimen”,
+species: data.species || “Unknown”,
+callType: data.callType || “Imported”,
+ocean_basin: data.ocean_basin || “—”,
+acousticFeatures: data.acousticFeatures || data,
+behavioralRecord: data.behavioralRecord || {},
+custom: true, imported: true,
+};
+setError(null);
+onSubmit(specimen);
+} catch (e) {
+setError(“Invalid JSON — “ + e.message);
+}
+};
+
+const onDrop = (e) => {
+e.preventDefault();
+setDragging(false);
+const file = e.dataTransfer.files[0];
+if (!file) return;
+const reader = new FileReader();
+reader.onload = ev => parse(ev.target.result);
+reader.readAsText(file);
+};
+
+return (
+<div>
+<div
+onDragOver={e => { e.preventDefault(); setDragging(true); }}
+onDragLeave={() => setDragging(false)}
+onDrop={onDrop}
+style={{
+border: `2px dashed ${dragging ? "#5DB8C8" : "#2a3a50"}`,
+borderRadius: 6, padding: “20px 16px”, marginBottom: 12,
+textAlign: “center”, transition: “border-color 0.2s”,
+background: dragging ? “#0d1d2d” : “transparent”,
+}}
+>
+<div style={{ fontSize: 12, color: “#4a7090”, fontFamily: “‘Space Mono’, monospace” }}>
+DROP JSON FILE HERE
+</div>
+<div style={{ fontSize: 11, color: “#2a4a60”, marginTop: 4 }}>
+CetaSignal format · Raven export · PAMGuard export
+</div>
+</div>
+<textarea
+value={text}
+onChange={e => setText(e.target.value)}
+placeholder={`{\n  "commonName": "Humpback Whale",\n  "acousticFeatures": {\n    "peakFrequency_hz": 400,\n    "duration_s": 8.1,\n    "freqContour": "complex",\n    "urgencyIndex": 0.1\n  }\n}`}
+rows={8}
+style={{
+width: “100%”, padding: “10px 12px”,
+background: “#0d1520”, border: “1px solid #2a3a50”,
+color: “#c8d8e8”, borderRadius: 4, fontSize: 11,
+fontFamily: “‘IBM Plex Mono’, monospace”, resize: “vertical”,
+boxSizing: “border-box”,
+}}
+/>
+{error && (
+<div style={{
+marginTop: 8, padding: “8px 12px”,
+background: “#2a1020”, border: “1px solid #5a2030”,
+borderRadius: 4, color: “#ff7090”, fontSize: 11,
+fontFamily: “‘Space Mono’, monospace”,
+}}>{error}</div>
+)}
+<button
+onClick={() => parse(text)}
+style={{
+marginTop: 10, padding: “10px 20px”,
+background: “#1a3a5a”, border: “1px solid #3a6a8a”,
+color: “#5DB8C8”, borderRadius: 4, cursor: “pointer”,
+fontSize: 12, fontFamily: “‘Space Mono’, monospace”,
+letterSpacing: “0.08em”, fontWeight: 700,
+}}
+>
+PARSE + RUN →
+</button>
+</div>
+);
+}
+
+// ── Main SandboxPanel ─────────────────────────────────────────────
+export default function SandboxPanel({ onAddToLibrary }) {
+const [mode, setMode] = useState(“library”); // library | custom | json
+const [specimen, setSpecimen] = useState(null);
+const [steps, setSteps] = useState([]);
+const [running, setRunning] = useState(false);
+const [result, setResult] = useState(null);
+const [scores, setScores] = useState({ CONTACT: 0, DIVE: 0, FORAGE: 0, NAVIGATE: 0, BROADCAST: 0 });
+const [userGT, setUserGT] = useState(null);
+const [added, setAdded] = useState(false);
+const stepsEndRef = useRef(null);
+const animFrameRef = useRef(null);
+
+useEffect(() => {
+if (stepsEndRef.current) {
+stepsEndRef.current.scrollIntoView({ behavior: “smooth” });
+}
+}, [steps]);
+
+const reset = () => {
+setSteps([]);
+setResult(null);
+setScores({ CONTACT: 0, DIVE: 0, FORAGE: 0, NAVIGATE: 0, BROADCAST: 0 });
+setRunning(false);
+setUserGT(null);
+setAdded(false);
+};
+
+const runAnalysis = useCallback((s) => {
+setSpecimen(s);
+reset();
+setRunning(true);
+
+```
+const features = normalizeSpecimen(s);
+const gen = streamCadenceModel(features);
+let stepsAcc = [];
+let stepIndex = 0;
+
+const DELAY_MS = 900; // ms between rule reveals
+
+const tick = () => {
+  const { value, done } = gen.next();
+  if (done && !value) {
+    setRunning(false);
+    return;
+  }
+  const step = value;
+  stepsAcc = [...stepsAcc, step];
+  setSteps([...stepsAcc]);
+  if (step.scores) setScores({ ...step.scores });
+  if (step.done) {
+    setResult(step);
+    setRunning(false);
+    return;
+  }
+  stepIndex++;
+  animFrameRef.current = setTimeout(tick, DELAY_MS);
+};
+
+animFrameRef.current = setTimeout(tick, 400);
+```
+
+}, []);
+
+// cleanup on unmount
+useEffect(() => () => clearTimeout(animFrameRef.current), []);
+
+const handleSelect = (s) => {
+runAnalysis(s);
+};
+
+const totalScore = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
+const probabilities = Object.fromEntries(
+Object.entries(scores).map(([k, v]) => [k, v / totalScore])
+);
+const leadingClass = Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+const gt = specimen?.behavioralRecord?.groundTruth;
+const correct = result && gt && result.finalClass === gt;
+
+return (
+<div style={{ display: “grid”, gridTemplateColumns: “340px 1fr”, gap: 0, height: “100%”, minHeight: 600 }}>
+
+```
+  {/* ── LEFT: Input panel ── */}
+  <div style={{
+    background: "#080f18",
+    borderRight: "1px solid #1a2535",
+    padding: 20,
+    overflowY: "auto",
+  }}>
+    {/* Mode tabs */}
+    <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+      {[["library", "LIBRARY"], ["custom", "CUSTOM"], ["json", "JSON"]].map(([key, label]) => (
+        <button
+          key={key}
+          onClick={() => { setMode(key); reset(); setSpecimen(null); }}
+          style={{
+            flex: 1, padding: "7px 4px",
+            background: mode === key ? "#1a2d42" : "transparent",
+            border: `1px solid ${mode === key ? "#3a5a70" : "#1a2535"}`,
+            color: mode === key ? "#5DB8C8" : "#4a6080",
+            borderRadius: 4, cursor: "pointer", fontSize: 10,
+            fontFamily: "'Space Mono', monospace",
+            letterSpacing: "0.08em", fontWeight: mode === key ? 700 : 400,
+            transition: "all 0.2s",
+          }}
+        >{label}</button>
+      ))}
+    </div>
+
+    {/* Mode content */}
+    {mode === "library" && <LibraryPicker onSelect={handleSelect} />}
+    {mode === "custom" && <CustomForm onSubmit={handleSelect} />}
+    {mode === "json" && <JsonImport onSubmit={handleSelect} />}
+  </div>
+
+  {/* ── RIGHT: Theater ── */}
+  <div style={{
+    background: "#0a1520",
+    padding: 24,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+  }}>
+
+    {/* Empty state */}
+    {!specimen && !running && (
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        color: "#2a3a50",
+      }}>
+        <div style={{
+          fontSize: 48, marginBottom: 16, opacity: 0.4,
+          fontFamily: "'Space Mono', monospace",
+        }}>⬡</div>
+        <div style={{
+          fontSize: 13, fontFamily: "'Space Mono', monospace",
+          letterSpacing: "0.1em", color: "#2a4060",
+        }}>SELECT A SPECIMEN TO BEGIN</div>
+        <div style={{ fontSize: 11, color: "#1a2d40", marginTop: 6 }}>
+          Watch CadenceClassifier reason through each rule in real time
+        </div>
+      </div>
+    )}
+
+    {/* Specimen header */}
+    {specimen && (
+      <div style={{
+        marginBottom: 20,
+        padding: "14px 16px",
+        background: "#080f18",
+        border: "1px solid #1a2535",
+        borderRadius: 6,
+      }}>
+        <div style={{
+          fontSize: 16, fontWeight: 700, color: "#e8f4ff",
+          marginBottom: 4,
+        }}>{specimen.commonName}</div>
+        <div style={{
+          fontSize: 11, fontFamily: "'Space Mono', monospace",
+          color: "#4a7090",
+        }}>
+          {specimen.callType}
+          {specimen.ocean_basin ? ` · ${specimen.ocean_basin}` : ""}
+          {specimen.custom ? " · CUSTOM ENTRY" : ""}
+          {specimen.imported ? " · JSON IMPORT" : ""}
+        </div>
+        {/* Parameter summary */}
+        <div style={{
+          marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8,
+        }}>
+          {(() => {
+            const f = normalizeSpecimen(specimen);
+            return [
+              ["pf", `${f.peakFrequency_hz?.toLocaleString()} Hz`],
+              ["dur", `${f.duration_s}s`],
+              ["contour", f.freqContour],
+              f.interPulseInterval_ms ? ["IPI", `${f.interPulseInterval_ms}ms`] : null,
+              ["urgency", f.urgencyIndex?.toFixed(2)],
+              f.repetitionHz ? ["rep", `${f.repetitionHz}Hz`] : null,
+            ].filter(Boolean).map(([k, v]) => (
+              <span key={k} style={{
+                fontSize: 10, fontFamily: "'Space Mono', monospace",
+                background: "#0d1a2a", border: "1px solid #1e2e40",
+                color: "#5a8aaa", padding: "2px 8px", borderRadius: 3,
+              }}>{k}: <span style={{ color: "#8ab0c8" }}>{v}</span></span>
+            ));
+          })()}
+        </div>
+      </div>
+    )}
+
+    {/* Live score bars */}
+    {specimen && (
+      <div style={{
+        marginBottom: 20,
+        padding: "14px 16px",
+        background: "#080f18",
+        border: "1px solid #1a2535",
+        borderRadius: 6,
+      }}>
+        <div style={{
+          fontSize: 10, fontFamily: "'Space Mono', monospace",
+          color: "#3a5a70", letterSpacing: "0.1em", marginBottom: 12,
+        }}>LIVE SCORE DISTRIBUTION</div>
+        {CLASS_ORDER.map(cls => (
+          <ScoreBar
+            key={cls}
+            label={cls}
+            value={probabilities[cls] || 0}
+            color={CLASS_COLORS[cls]}
+            isWinner={!running && cls === result?.finalClass}
+          />
+        ))}
+        {running && (
+          <div style={{
+            marginTop: 10, fontSize: 10,
+            fontFamily: "'Space Mono', monospace",
+            color: "#3a5a70", letterSpacing: "0.08em",
+          }}>
+            <span style={{ animation: "pulse 1s infinite" }}>● </span>
+            ANALYZING…
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Evidence trail */}
+    {steps.length > 0 && (
+      <div style={{
+        marginBottom: 20,
+        padding: "14px 16px",
+        background: "#080f18",
+        border: "1px solid #1a2535",
+        borderRadius: 6,
+        flex: 1,
+      }}>
+        <div style={{
+          fontSize: 10, fontFamily: "'Space Mono', monospace",
+          color: "#3a5a70", letterSpacing: "0.1em", marginBottom: 16,
+        }}>RULE TRACE — CADENCECLASSIFIER v3.0</div>
+        {steps.map((step, i) => (
+          <EvidenceCard key={i} step={step} entering={false} />
+        ))}
+        <div ref={stepsEndRef} />
+      </div>
+    )}
+
+    {/* Final verdict */}
+    {result && (
+      <div style={{
+        padding: "18px 20px",
+        background: "#080f18",
+        border: `2px solid ${CLASS_COLORS[result.finalClass] || "#5DB8C8"}`,
+        borderRadius: 6,
+        marginBottom: 16,
+      }}>
+        <div style={{
+          fontSize: 10, fontFamily: "'Space Mono', monospace",
+          color: "#3a5a70", letterSpacing: "0.1em", marginBottom: 8,
+        }}>CLASSIFICATION RESULT</div>
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+          <span style={{
+            fontSize: 28, fontWeight: 800,
+            color: CLASS_COLORS[result.finalClass],
+            fontFamily: "'Space Mono', monospace",
+            letterSpacing: "0.04em",
+          }}>{result.finalClass}</span>
+          <span style={{
+            fontSize: 16, fontFamily: "'Space Mono', monospace",
+            color: "#4a7090",
+          }}>{Math.round((result.confidence || 0) * 100)}% confidence</span>
+        </div>
+
+        <div style={{
+          fontSize: 12, color: "#6a8aaa",
+          fontFamily: "'IBM Plex Mono', monospace",
+          lineHeight: 1.6, marginBottom: 12,
+        }}>
+          {BEHAVIORAL_CLASSES[result.finalClass]?.description}
+        </div>
+
+        {/* Ground truth comparison */}
+        {gt && (
+          <div style={{
+            padding: "8px 12px",
+            background: correct ? "#0a2a1a" : "#2a0a0a",
+            border: `1px solid ${correct ? "#1a5a2a" : "#5a1a1a"}`,
+            borderRadius: 4, marginBottom: 12,
+            fontSize: 11, fontFamily: "'Space Mono', monospace",
+          }}>
+            <span style={{ color: "#4a7090" }}>GROUND TRUTH: </span>
+            <span style={{ color: correct ? "#44C88A" : "#ff7070", fontWeight: 700 }}>
+              {gt}
+            </span>
+            <span style={{ color: correct ? "#44C88A" : "#ff7070", marginLeft: 12 }}>
+              {correct ? "✓ CORRECT" : "✗ MISMATCH"}
+            </span>
+          </div>
+        )}
+
+        {/* User ground truth override */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            fontSize: 10, fontFamily: "'Space Mono', monospace",
+            color: "#3a5a70", letterSpacing: "0.08em", marginBottom: 6,
+          }}>EXPERT VALIDATION — confirm or correct ground truth:</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {CLASS_ORDER.map(cls => (
+              <button
+                key={cls}
+                onClick={() => setUserGT(cls)}
+                style={{
+                  padding: "5px 12px",
+                  background: userGT === cls ? CLASS_COLORS[cls] + "33" : "transparent",
+                  border: `1px solid ${userGT === cls ? CLASS_COLORS[cls] : "#2a3a50"}`,
+                  color: userGT === cls ? CLASS_COLORS[cls] : "#4a6080",
+                  borderRadius: 4, cursor: "pointer", fontSize: 10,
+                  fontFamily: "'Space Mono', monospace",
+                  letterSpacing: "0.06em",
+                  transition: "all 0.15s",
+                }}
+              >{cls}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Add to library */}
+        {userGT && !added && (
+          <button
+            onClick={() => {
+              const enriched = {
+                ...specimen,
+                behavioralRecord: {
+                  ...(specimen.behavioralRecord || {}),
+                  groundTruth: userGT,
+                  expertValidated: true,
+                  validatedAt: new Date().toISOString(),
+                },
+                classifierResult: result,
+              };
+              onAddToLibrary?.(enriched);
+              setAdded(true);
+            }}
+            style={{
+              padding: "10px 20px",
+              background: "#1a4a2a",
+              border: "1px solid #2a7a3a",
+              color: "#44C88A", borderRadius: 4, cursor: "pointer",
+              fontSize: 12, fontFamily: "'Space Mono', monospace",
+              letterSpacing: "0.08em", fontWeight: 700,
+              transition: "background 0.2s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "#1e5a30"}
+            onMouseLeave={e => e.currentTarget.style.background = "#1a4a2a"}
+          >
+            + ADD TO SPECIMEN LIBRARY
+          </button>
+        )}
+
+        {added && (
+          <div style={{
+            fontSize: 11, fontFamily: "'Space Mono', monospace",
+            color: "#44C88A", letterSpacing: "0.08em",
+          }}>✓ ADDED TO LIBRARY — ground truth: {userGT}</div>
+        )}
+      </div>
+    )}
+
+    {/* Run again */}
+    {result && (
+      <button
+        onClick={() => { reset(); setSpecimen(null); }}
+        style={{
+          padding: "8px 16px",
+          background: "transparent",
+          border: "1px solid #2a3a50",
+          color: "#4a6080", borderRadius: 4, cursor: "pointer",
+          fontSize: 10, fontFamily: "'Space Mono', monospace",
+          letterSpacing: "0.08em", alignSelf: "flex-start",
+          transition: "all 0.2s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = "#3a5a70"; e.currentTarget.style.color = "#6a8aaa"; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = "#2a3a50"; e.currentTarget.style.color = "#4a6080"; }}
+      >← NEW SPECIMEN</button>
+    )}
+
+  </div>
+
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  `}</style>
+</div>
+```
+
+);
+}
