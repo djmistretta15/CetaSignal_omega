@@ -1,0 +1,273 @@
+import { CONSTRAINTS, CONSTRAINT_DOMAINS } from “../data/constraints.js”;
+import { OCEAN_BASINS } from “../data/specimens.js”;
+
+// ─────────────────────────────────────────────────────────────────
+// ConstraintFramework
+//
+// Displays all 15 constraints across 3 domains with full
+// scientific rationale, class implications, and acoustic
+// signatures. Also shows the 11 ocean basins from the
+// 5K blind validation.
+//
+// This panel is the scientific foundation of the system —
+// every rule in the classifier traces back to a constraint here.
+// ─────────────────────────────────────────────────────────────────
+
+function ConstraintCard({ c, accent }) {
+const color = accent || “#5DB8C8”;
+return (
+<div style={{
+border: “1px solid #0F1E2A”,
+borderRadius: 3,
+padding: 18,
+borderTop: `2px solid ${color}22`,
+background: “#080E14”,
+}}>
+<div style={{
+fontSize: 12, color: “#8AAABB”,
+marginBottom: 8, letterSpacing: “0.04em”,
+}}>{c.label}</div>
+
+```
+  <p style={{
+    fontSize: 11, color: "#4A6A7A",
+    lineHeight: 1.85, marginBottom: 12,
+  }}>{c.description}</p>
+
+  {c.classImplication && (
+    <div style={{
+      marginBottom: 8, padding: "6px 10px",
+      background: "#050A0F", borderRadius: 2,
+      borderLeft: `2px solid ${color}44`,
+    }}>
+      <div style={{
+        fontSize: 8, color: "#3A5A6A",
+        letterSpacing: "0.12em", marginBottom: 3,
+      }}>CLASS IMPLICATION</div>
+      <div style={{
+        fontSize: 10, color: color, lineHeight: 1.6,
+      }}>{c.classImplication}</div>
+    </div>
+  )}
+
+  {c.featureSignature && (
+    <div style={{
+      marginBottom: 10, padding: "5px 10px",
+      background: "#050A0F", borderRadius: 2,
+    }}>
+      <div style={{
+        fontSize: 8, color: "#3A5A6A",
+        letterSpacing: "0.12em", marginBottom: 3,
+      }}>ACOUSTIC SIGNATURE</div>
+      <div style={{
+        fontSize: 9, color: "#4A6A7A",
+        fontFamily: "'IBM Plex Mono', monospace",
+        lineHeight: 1.6,
+      }}>{c.featureSignature}</div>
+    </div>
+  )}
+
+  <div style={{
+    fontSize: 9, color: "#2A4050",
+    letterSpacing: "0.08em",
+  }}>RELEVANT: {c.relevantSpecies.join(", ")}</div>
+</div>
+```
+
+);
+}
+
+export default function ConstraintFramework() {
+const totalConstraints =
+CONSTRAINTS.physical.length +
+CONSTRAINTS.biological.length +
+CONSTRAINTS.anthropogenic.length;
+
+return (
+<div style={{ marginTop: 32 }}>
+
+```
+  {/* Stats bar */}
+  <div style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 12,
+    marginBottom: 28,
+  }}>
+    {[
+      { n: totalConstraints, label: "TOTAL CONSTRAINTS", color: "#5DB8C8" },
+      { n: CONSTRAINTS.physical.length,      label: "PHYSICAL",      color: CONSTRAINT_DOMAINS.physical.color },
+      { n: CONSTRAINTS.biological.length,    label: "BIOLOGICAL",    color: CONSTRAINT_DOMAINS.biological.color },
+      { n: CONSTRAINTS.anthropogenic.length, label: "ANTHROPOGENIC", color: CONSTRAINT_DOMAINS.anthropogenic.color },
+    ].map(({ n, label, color }) => (
+      <div key={label} style={{
+        textAlign: "center",
+        borderTop: `2px solid ${color}33`,
+        padding: "14px 8px",
+        background: "#080E14",
+        border: "1px solid #0F1E2A",
+        borderRadius: 3,
+      }}>
+        <div style={{ fontSize: 28, fontWeight: 300, color }}>{n}</div>
+        <div style={{
+          fontSize: 9, color: "#3A5A6A",
+          letterSpacing: "0.12em", marginTop: 3,
+        }}>{label}</div>
+      </div>
+    ))}
+  </div>
+
+  {/* Central thesis */}
+  <div style={{
+    background: "#080E14",
+    border: "1px solid #132030",
+    borderRadius: 4,
+    padding: 28,
+    marginBottom: 32,
+  }}>
+    <div style={{
+      fontSize: 9, color: "#3A5A6A",
+      letterSpacing: "0.15em", marginBottom: 12,
+    }}>CENTRAL THESIS</div>
+    <blockquote style={{
+      fontFamily: "'IBM Plex Serif', serif",
+      fontSize: 15, color: "#7A9AAA",
+      lineHeight: 1.9, fontStyle: "italic",
+      borderLeft: "2px solid #5DB8C8",
+      paddingLeft: 20, margin: 0,
+    }}>
+      "Language does not emerge in spite of constraint — it emerges because of it.
+      The acoustic signaling systems of marine mammals are not approximations of human language;
+      they are optimal solutions to the coordination problems imposed by a dark, three-dimensional,
+      high-pressure medium. Cadence, not lexicon, is the primary encoding channel."
+    </blockquote>
+    <div style={{
+      fontSize: 9, color: "#2A4050", marginTop: 12,
+    }}>CetaSignal Research Framework, 2025</div>
+  </div>
+
+  {/* Physical Constraints */}
+  <section style={{ marginBottom: 32 }}>
+    <div style={{
+      display: "flex", alignItems: "center",
+      gap: 12, marginBottom: 18,
+    }}>
+      <div style={{
+        fontSize: 10, color: CONSTRAINT_DOMAINS.physical.color,
+        letterSpacing: "0.18em", textTransform: "uppercase",
+      }}>Physical Constraints</div>
+      <div style={{ flex: 1, height: 1, background: `${CONSTRAINT_DOMAINS.physical.color}22` }} />
+      <div style={{ fontSize: 9, color: "#3A5A6A" }}>
+        {CONSTRAINTS.physical.length} CONSTRAINTS
+      </div>
+    </div>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: 12,
+    }}>
+      {CONSTRAINTS.physical.map(c => (
+        <ConstraintCard key={c.id} c={c} accent={CONSTRAINT_DOMAINS.physical.color} />
+      ))}
+    </div>
+  </section>
+
+  {/* Biological Constraints */}
+  <section style={{ marginBottom: 32 }}>
+    <div style={{
+      display: "flex", alignItems: "center",
+      gap: 12, marginBottom: 18,
+    }}>
+      <div style={{
+        fontSize: 10, color: CONSTRAINT_DOMAINS.biological.color,
+        letterSpacing: "0.18em", textTransform: "uppercase",
+      }}>Biological Constraints</div>
+      <div style={{ flex: 1, height: 1, background: `${CONSTRAINT_DOMAINS.biological.color}22` }} />
+      <div style={{ fontSize: 9, color: "#3A5A6A" }}>
+        {CONSTRAINTS.biological.length} CONSTRAINTS
+      </div>
+    </div>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: 12,
+    }}>
+      {CONSTRAINTS.biological.map(c => (
+        <ConstraintCard key={c.id} c={c} accent={CONSTRAINT_DOMAINS.biological.color} />
+      ))}
+    </div>
+  </section>
+
+  {/* Anthropogenic Constraints */}
+  <section style={{ marginBottom: 32 }}>
+    <div style={{
+      display: "flex", alignItems: "center",
+      gap: 12, marginBottom: 18,
+    }}>
+      <div style={{
+        fontSize: 10, color: CONSTRAINT_DOMAINS.anthropogenic.color,
+        letterSpacing: "0.18em", textTransform: "uppercase",
+      }}>Anthropogenic Constraints</div>
+      <div style={{ flex: 1, height: 1, background: `${CONSTRAINT_DOMAINS.anthropogenic.color}22` }} />
+      <div style={{ fontSize: 9, color: "#3A5A6A" }}>
+        {CONSTRAINTS.anthropogenic.length} CONSTRAINTS
+      </div>
+    </div>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: 12,
+    }}>
+      {CONSTRAINTS.anthropogenic.map(c => (
+        <ConstraintCard key={c.id} c={c} accent={CONSTRAINT_DOMAINS.anthropogenic.color} />
+      ))}
+    </div>
+  </section>
+
+  {/* Ocean Basins */}
+  <section style={{ marginBottom: 32 }}>
+    <div style={{
+      display: "flex", alignItems: "center",
+      gap: 12, marginBottom: 18,
+    }}>
+      <div style={{
+        fontSize: 10, color: "#5DB8C8",
+        letterSpacing: "0.18em", textTransform: "uppercase",
+      }}>11 Ocean Basins Validated</div>
+      <div style={{ flex: 1, height: 1, background: "#5DB8C822" }} />
+      <div style={{ fontSize: 9, color: "#3A5A6A" }}>
+        5000 SPECIMENS · 99.2% ACCURACY
+      </div>
+    </div>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(3, 1fr)",
+      gap: 10,
+    }}>
+      {OCEAN_BASINS.map(b => (
+        <div key={b.id} style={{
+          border: "1px solid #0F1E2A",
+          borderRadius: 3,
+          padding: 14,
+          borderLeft: `3px solid ${b.color}44`,
+          background: "#080E14",
+        }}>
+          <div style={{
+            fontSize: 11, color: "#8AAABB", marginBottom: 6,
+          }}>{b.label}</div>
+          <div style={{
+            fontSize: 10, color: b.color, marginBottom: 6,
+          }}>{b.specimens} specimens</div>
+          <div style={{
+            fontSize: 9, color: "#3A5A6A", lineHeight: 1.6,
+          }}>{b.species.join(" · ")}</div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+</div>
+```
+
+);
+}
