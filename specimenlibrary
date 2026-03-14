@@ -1,0 +1,417 @@
+import { useState, useRef, useEffect } from “react”;
+import { SPECIMENS } from “../data/specimens.js”;
+import { DATA_REGISTRY, REGISTRY_BY_ID } from “../data/registry.js”;
+import { BEHAVIORAL_CLASSES, GROUND_TRUTH_MAP } from “../data/behavioralClasses.js”;
+
+// ─────────────────────────────────────────────────────────────────
+// SpecimenLibrary
+//
+// Observatory tab — full list of all 29 (+ any user-added) specimens
+// with expandable detail panels. Selecting a specimen shows:
+//   - Acoustic parameters
+//   - Behavioral record + ground truth
+//   - Language acquisition relevance
+//   - Source dataset + citation chain
+//
+// onAnalyse(specimen) — fires when user clicks ANALYSE,
+// which should switch to the Sandbox tab with that specimen loaded.
+// ─────────────────────────────────────────────────────────────────
+
+const CLASS_COLORS = {
+CONTACT: “#5DB8C8”, DIVE: “#3A7BD5”, FORAGE: “#44C88A”,
+NAVIGATE: “#D4A843”, BROADCAST: “#A855D8”,
+};
+
+function Label({ children }) {
+return (
+<div style={{
+fontSize: 9, color: “#3A5A6A”,
+letterSpacing: “0.15em”, textTransform: “uppercase”,
+}}>{children}</div>
+);
+}
+
+function ParamRow({ label, value }) {
+return (
+<div style={{
+borderBottom: “1px solid #0A1520”,
+paddingBottom: 8, marginBottom: 8,
+}}>
+<div style={{
+fontSize: 9, color: “#3A5A6A”,
+letterSpacing: “0.1em”, marginBottom: 3,
+}}>{label}</div>
+<div style={{ fontSize: 12, color: “#7A9AAA” }}>{value}</div>
+</div>
+);
+}
+
+function SpecimenDetail({ specimen: s, onAnalyse }) {
+const src = REGISTRY_BY_ID[s.sourceDataset];
+const af = s.acousticFeatures || {};
+const br = s.behavioralRecord || {};
+const ar = s.acquisitionRelevance || {};
+const gtClass = br.groundTruth || GROUND_TRUTH_MAP[br.observedBehavior];
+const gtColor = CLASS_COLORS[gtClass] || “#5DB8C8”;
+
+return (
+<div style={{
+border: “1px solid #0F1E2A”,
+borderRadius: 4, overflow: “hidden”,
+}}>
+{/* Header */}
+<div style={{
+padding: “16px 20px”,
+borderBottom: “1px solid #0F1E2A”,
+background: “#080E14”,
+}}>
+<div style={{
+fontSize: 9, color: “#3A5A6A”,
+letterSpacing: “0.15em”, marginBottom: 6,
+}}>{s.catalogId}</div>
+<div style={{
+fontSize: 15, color: “#8AAABB”,
+fontStyle: “italic”, fontFamily: “‘IBM Plex Serif’, serif”,
+}}>{s.species}</div>
+<div style={{ fontSize: 11, color: “#5A7A8A”, marginTop: 3 }}>
+{s.commonName} · {s.callType}
+</div>
+</div>
+
+```
+  <div style={{ padding: 20 }}>
+    {/* Acoustic parameters */}
+    <div style={{ marginBottom: 20 }}>
+      <Label>ACOUSTIC PARAMETERS</Label>
+      <div style={{
+        marginTop: 10,
+        display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px",
+      }}>
+        <ParamRow label="Peak Frequency" value={`${af.peakFrequency_hz?.toLocaleString() ?? "—"} Hz`} />
+        <ParamRow label="Duration" value={`${af.duration_s ?? "—"} s`} />
+        {af.frequencyRange_hz && (
+          <ParamRow label="Frequency Range" value={`${af.frequencyRange_hz[0]}–${af.frequencyRange_hz[1]} Hz`} />
+        )}
+        <ParamRow label="Contour" value={af.freqContour ?? "—"} />
+        <ParamRow label="Urgency Index" value={af.urgencyIndex != null ? af.urgencyIndex.toFixed(2) : "—"} />
+        <ParamRow
+          label="IPI"
+          value={af.interPulseInterval_ms ? `${af.interPulseInterval_ms} ms` : "N/A (tonal)"}
+        />
+      </div>
+    </div>
+
+    {/* Behavioral record */}
+    <div style={{ marginBottom: 20 }}>
+      <Label>BEHAVIORAL RECORD</Label>
+      <div style={{
+        marginTop: 10, background: "#080E14",
+        border: "1px solid #132030", borderRadius: 3, padding: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: gtColor }}>
+            {br.observedBehavior || br.groundTruth || "—"}
+          </span>
+          {gtClass && (
+            <span style={{
+              fontSize: 8, padding: "2px 6px",
+              background: `${gtColor}18`,
+              border: `1px solid ${gtColor}44`,
+              color: gtColor, borderRadius: 2,
+              letterSpacing: "0.1em",
+            }}>{gtClass}</span>
+          )}
+        </div>
+        {br.description && (
+          <p style={{
+            fontSize: 11, color: "#5A7A8A",
+            lineHeight: 1.7, marginBottom: 10,
+          }}>{br.description}</p>
+        )}
+        {br.groundTruthMethod && (
+          <div style={{
+            fontSize: 9, color: "#2A4050", letterSpacing: "0.1em",
+          }}>GROUND TRUTH METHOD: {br.groundTruthMethod}</div>
+        )}
+        {br.observerNotes && (
+          <div style={{
+            marginTop: 8, fontSize: 10, color: "#3A5A6A",
+            fontStyle: "italic",
+            borderTop: "1px solid #0F1E2A", paddingTop: 8,
+          }}>{br.observerNotes}</div>
+        )}
+      </div>
+    </div>
+
+    {/* Acquisition relevance */}
+    {(ar.constraintMapped || ar.juvenileKnown != null) && (
+      <div style={{ marginBottom: 20 }}>
+        <Label>LANGUAGE ACQUISITION RELEVANCE</Label>
+        <div style={{
+          marginTop: 10, background: "#080E14",
+          border: "1px solid #132030", borderRadius: 3, padding: 14,
+        }}>
+          {ar.constraintMapped && (
+            <p style={{
+              fontSize: 11, color: "#5A7A8A",
+              lineHeight: 1.7, marginBottom: 8,
+            }}>{ar.constraintMapped}</p>
+          )}
+          {ar.juvenileResponse && (
+            <div style={{
+              borderTop: "1px solid #0F1E2A",
+              paddingTop: 10, marginTop: 8,
+            }}>
+              <div style={{
+                fontSize: 9, color: "#3A5A6A",
+                letterSpacing: "0.1em", marginBottom: 5,
+              }}>JUVENILE RESPONSE DATA</div>
+              <p style={{
+                fontSize: 11, color: "#5A7A8A", lineHeight: 1.7,
+              }}>{ar.juvenileResponse}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Source dataset */}
+    {src && (
+      <div style={{
+        marginBottom: 20, padding: 12,
+        background: "#050A10",
+        border: "1px solid #0A1520", borderRadius: 3,
+      }}>
+        <div style={{
+          fontSize: 9, color: "#2A4050",
+          letterSpacing: "0.1em", marginBottom: 4,
+        }}>SOURCE DATASET</div>
+        <div style={{ fontSize: 11, color: "#5A7A8A", marginBottom: 4 }}>{src.fullName}</div>
+        <div style={{ fontSize: 9, color: "#2A4050", marginBottom: 2 }}>{src.citation}</div>
+        {src.doi && (
+          <div style={{ fontSize: 9, color: "#3A5A6A" }}>DOI: {src.doi}</div>
+        )}
+        <a
+          href={src.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: 9, color: "#5DB8C8",
+            textDecoration: "none", letterSpacing: "0.08em",
+            display: "inline-block", marginTop: 6,
+          }}
+        >↗ ACCESS DATASET</a>
+      </div>
+    )}
+
+    {/* Citations */}
+    {s.citations?.length > 0 && (
+      <div style={{ marginBottom: 20 }}>
+        <Label>LITERATURE</Label>
+        <div style={{ marginTop: 10 }}>
+          {s.citations.map((c, i) => (
+            <div key={i} style={{
+              fontSize: 10, color: "#3A5A6A",
+              padding: "6px 0",
+              borderBottom: "1px solid #0A1520",
+              lineHeight: 1.6,
+            }}>[{i + 1}] {c}</div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <button
+      onClick={onAnalyse}
+      style={{
+        width: "100%", padding: "10px 0",
+        background: "#1a3a5a", border: "1px solid #3a6a8a",
+        color: "#5DB8C8", borderRadius: 4, cursor: "pointer",
+        fontSize: 11, fontFamily: "'Space Mono', monospace",
+        letterSpacing: "0.1em", fontWeight: 700,
+        transition: "background 0.2s",
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = "#1e4060"}
+      onMouseLeave={e => e.currentTarget.style.background = "#1a3a5a"}
+    >
+      RUN CADENCE ANALYSIS IN SANDBOX →
+    </button>
+  </div>
+</div>
+```
+
+);
+}
+
+export default function SpecimenLibrary({ onAnalyse, extraSpecimens = [] }) {
+const [selected, setSelected] = useState(null);
+const [filter, setFilter] = useState(””);
+
+const allSpecimens = […SPECIMENS, …extraSpecimens];
+
+const filtered = allSpecimens.filter(s =>
+!filter ||
+s.commonName.toLowerCase().includes(filter.toLowerCase()) ||
+s.species.toLowerCase().includes(filter.toLowerCase()) ||
+s.callType.toLowerCase().includes(filter.toLowerCase()) ||
+(s.ocean_basin || “”).toLowerCase().includes(filter.toLowerCase())
+);
+
+return (
+<div style={{ marginTop: 24 }}>
+{/* Filter */}
+<input
+value={filter}
+onChange={e => setFilter(e.target.value)}
+placeholder=“Filter by species, call type, or ocean basin…”
+style={{
+width: “100%”, padding: “8px 14px”,
+background: “#080E14”, border: “1px solid #1a2535”,
+color: “#c8d8e8”, borderRadius: 4, fontSize: 12,
+fontFamily: “‘IBM Plex Mono’, monospace”,
+boxSizing: “border-box”, marginBottom: 16,
+}}
+/>
+
+```
+  <div style={{
+    display: "grid",
+    gridTemplateColumns: selected ? "1fr 1.2fr" : "1fr",
+    gap: 24,
+  }}>
+    {/* Specimen list */}
+    <div>
+      <div style={{
+        border: "1px solid #0F1E2A",
+        borderRadius: 4, overflow: "hidden",
+      }}>
+        {/* Table header */}
+        <div style={{
+          padding: "10px 20px",
+          borderBottom: "1px solid #0F1E2A",
+          display: "grid",
+          gridTemplateColumns: "140px 1fr 90px 80px",
+          gap: 16, fontSize: 9, color: "#3A5A6A",
+          letterSpacing: "0.12em", textTransform: "uppercase",
+          background: "#080E14",
+        }}>
+          <div>CATALOG ID</div>
+          <div>SPECIMEN</div>
+          <div>CLASS</div>
+          <div>ACTION</div>
+        </div>
+
+        {filtered.length === 0 && (
+          <div style={{
+            padding: "24px 20px",
+            fontSize: 11, color: "#2a4050", textAlign: "center",
+          }}>No specimens match filter.</div>
+        )}
+
+        {filtered.map(s => {
+          const gt = s.behavioralRecord?.groundTruth || GROUND_TRUTH_MAP[s.behavioralRecord?.observedBehavior];
+          const bc = BEHAVIORAL_CLASSES[gt];
+          const isSelected = selected?.id === s.id;
+          const isCustom = s.custom || s.imported;
+
+          return (
+            <div
+              key={s.id}
+              onClick={() => setSelected(isSelected ? null : s)}
+              style={{
+                padding: "12px 20px",
+                display: "grid",
+                gridTemplateColumns: "140px 1fr 90px 80px",
+                gap: 16, alignItems: "center",
+                borderBottom: "1px solid #0a1520",
+                cursor: "pointer",
+                background: isSelected ? "#0d1a28" : "transparent",
+                borderLeft: isSelected ? "2px solid #5DB8C8" : "2px solid transparent",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#0a1520"; }}
+              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{
+                fontSize: 9, color: "#3A5A6A",
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}>{s.catalogId || s.id}</div>
+              <div>
+                <div style={{
+                  fontSize: 11, color: "#8AAABB",
+                  fontStyle: "italic",
+                }}>{s.species}</div>
+                <div style={{ fontSize: 10, color: "#5A7A8A", marginTop: 2 }}>
+                  {s.callType}
+                  {isCustom && (
+                    <span style={{
+                      marginLeft: 6, fontSize: 8,
+                      color: "#44C88A", letterSpacing: "0.08em",
+                    }}>USER</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                {bc && (
+                  <span style={{
+                    fontSize: 8, padding: "2px 7px",
+                    background: `${bc.color}22`,
+                    color: bc.color,
+                    border: `1px solid ${bc.color}44`,
+                    borderRadius: 2, letterSpacing: "0.08em",
+                  }}>{bc.label}</span>
+                )}
+              </div>
+              <div>
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onAnalyse?.(s);
+                  }}
+                  style={{
+                    fontSize: 9, padding: "4px 10px",
+                    background: "transparent",
+                    border: "1px solid #2a3a50",
+                    color: "#5DB8C8", borderRadius: 3,
+                    cursor: "pointer", letterSpacing: "0.06em",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = "#1a2d42";
+                    e.currentTarget.style.borderColor = "#3a5a70";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.borderColor = "#2a3a50";
+                  }}
+                >ANALYSE</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        marginTop: 10, fontSize: 9, color: "#2a4050",
+        textAlign: "right", letterSpacing: "0.08em",
+      }}>
+        {filtered.length} of {allSpecimens.length} specimens
+        {extraSpecimens.length > 0 && ` · ${extraSpecimens.length} user-added`}
+      </div>
+    </div>
+
+    {/* Specimen detail panel */}
+    {selected && (
+      <div>
+        <SpecimenDetail
+          specimen={selected}
+          onAnalyse={() => onAnalyse?.(selected)}
+        />
+      </div>
+    )}
+  </div>
+</div>
+```
+
+);
+}
