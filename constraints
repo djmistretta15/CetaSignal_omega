@@ -1,0 +1,163 @@
+// ─────────────────────────────────────────────────────────────────
+// Constraint Framework — CetaSignal theoretical model
+//
+// 15 constraints across 3 domains: physical / biological / anthropogenic
+//
+// Every constraint in this file shaped one or more rules in
+// CadenceClassifier v3.0. The classifier is not a black box —
+// each rule traces back to a documented physical or biological
+// necessity documented here with peer-reviewed citations.
+//
+// This framework is the scientific foundation of the system.
+// It applies beyond cetaceans to any organism communicating
+// through an acoustic medium under similar physical pressures.
+// ─────────────────────────────────────────────────────────────────
+
+export const CONSTRAINTS = {
+
+// ── PHYSICAL CONSTRAINTS ──────────────────────────────────────
+physical: [
+{
+id: “sofar”,
+label: “SOFAR Channel”,
+description: “Sound Fixing and Ranging channel at ~800m depth. Minimum sound velocity layer — acts as natural acoustic waveguide. A 20Hz fin whale pulse propagates with < 1dB/km attenuation vs. 5–10dB/km in surface waters. Enables ocean-basin-scale coordination across thousands of kilometers. The SOFAR axis depth varies by latitude — shallower in polar waters (200–400m), deeper in tropics (800–1200m). Species that migrate through multiple latitudes must adjust call depth accordingly.”,
+relevantSpecies: [“Blue Whale”, “Fin Whale”, “Sei Whale”, “Bryde’s Whale”, “Omura’s Whale”],
+classImplication: “NAVIGATE and BROADCAST signals exploit SOFAR for long-range propagation.”,
+featureSignature: “pf < 200Hz, slow IPI (2000–18000ms), flat contour”,
+},
+{
+id: “visibility”,
+label: “Low Visibility / Optical Opacity”,
+description: “Ocean water column severely limits visual range. Coastal turbid waters: < 5m. Open ocean clearest conditions: 50–80m. This fundamental constraint forces acoustic primacy — every cetacean behavioral coordination requirement that uses vision in terrestrial mammals must use acoustics instead. Pod cohesion, prey location, navigation heading, predator detection, and mate assessment all occur through acoustic channels. The absence of light below 200m makes this an absolute constraint.”,
+relevantSpecies: [“All”],
+classImplication: “All classes — foundational constraint driving acoustic system evolution.”,
+featureSignature: “N/A — system-level constraint that makes the entire classifier necessary.”,
+},
+{
+id: “threedimensional”,
+label: “3D Volumetric Environment”,
+description: “Unlike terrestrial mammals operating in 2D planes, cetaceans must coordinate in all three spatial axes simultaneously. Depth, heading, and lateral position must all be encoded. A diving pod may span 300m of vertical distance. Directional acoustic signals carry spatial vector information — the angle of frequency sweep (rising vs. descending), the rate of change, and the amplitude profile all encode dimensional information unavailable to 2D-constrained land animals. This is why dive signals are directionally asymmetric — they encode the vertical dimension explicitly.”,
+relevantSpecies: [“All deep-diving species”],
+classImplication: “DIVE most directly. NAVIGATE encodes heading in 3D.”,
+featureSignature: “Descending contour for depth-change. Rising contour for surface approach.”,
+},
+{
+id: “pressure”,
+label: “Hydrostatic Pressure Gradient”,
+description: “Sound speed increases with pressure at ~1.6 m/s per 10m of depth. At 1000m, sound speed is ~50 m/s faster than surface. This creates a refractive acoustic environment — signals bend upward toward lower sound speed layers. Beaked whales at 1450m depth must produce signals that penetrate the thermocline, the seasonal layers, and the SOFAR channel above them to reach surface-level pod members. Signal source level must compensate for propagation loss through these layers.”,
+relevantSpecies: [“Sperm Whale”, “Cuvier’s Beaked Whale”, “Blainville’s Beaked Whale”],
+classImplication: “FORAGE at depth. CONTACT cross-layer signals require higher source level.”,
+featureSignature: “High source level at depth. IPI affected by ambient pressure on melon.”,
+},
+{
+id: “air_water_interface”,
+label: “Air-Water Acoustic Boundary”,
+description: “The sea surface is an acoustic reflector that creates a standing wave boundary condition. Signals emitted near the surface undergo Lloyd Mirror reflection — interference patterns create frequency-dependent propagation notches. For diving species, the surface interface represents an acoustic ceiling — signals must be complete before submergence terminates acoustic access to the surface channel. This is why DIVE signals are short duration: they must be complete before descent.”,
+relevantSpecies: [“All surface-active species”],
+classImplication: “CONTACT signals optimized for near-surface propagation. DIVE signal must complete before dive closure.”,
+featureSignature: “Short duration (complete before dive). Rising contour matches surface-optimized propagation.”,
+},
+{
+id: “thermocline”,
+label: “Seasonal Thermocline Layer”,
+description: “Seasonal thermoclines at 50–150m depth create acoustic shadow zones — signals below the thermocline are refracted downward and cannot reach surface receivers efficiently. This functional acoustic partition between surface-foraging and deep-foraging individuals drives baleen whale navigation signals to very low frequencies (< 200Hz) that can penetrate thermoclines and reach basin-scale ranges. Thermocline depth shifts seasonally — species that track prey to depth must adjust signal frequency accordingly.”,
+relevantSpecies: [“Fin Whale”, “Blue Whale”, “Sperm Whale”],
+classImplication: “NAVIGATE and CONTACT cross-thermocline signals require low frequency.”,
+featureSignature: “pf < 200Hz for cross-thermocline propagation.”,
+},
+{
+id: “acoustic_attenuation”,
+label: “Frequency-Dependent Attenuation”,
+description: “Seawater attenuates acoustic energy at a rate that increases with frequency. At 20Hz: ~0.001 dB/km. At 10kHz: ~1 dB/km. At 100kHz: ~30 dB/km. This exponential relationship directly constrains signal range by call type. A 20Hz fin whale pulse can propagate 3000km. A 50kHz dolphin click loses 90% of energy within 1km. The result: long-range coordination signals are physically forced to low frequencies. Short-range precision signals operate at high frequencies where fine-grained target discrimination is possible. The frequency of a signal encodes its intended range.”,
+relevantSpecies: [“All — universal constraint on frequency-range tradeoff”],
+classImplication: “NAVIGATE/BROADCAST at low frequency for range. FORAGE at high frequency for precision.”,
+featureSignature: “Primary axis of CadenceClassifier. Frequency encodes range intent.”,
+},
+],
+
+// ── BIOLOGICAL CONSTRAINTS ─────────────────────────────────────
+biological: [
+{
+id: “pod_cohesion”,
+label: “Pod Cohesion Imperative”,
+description: “Group survival advantage in cetaceans is well-documented — coordinated prey herding increases catch rate by 3–4x, coordinated predator defense reduces individual risk, and knowledge transfer through pod networks requires physical proximity. These advantages require continuous acoustic presence signaling. Silence has survival cost. The result is a system where regular contact calls are a metabolic baseline — not a response to stimulus but a continuous low-cost beacon. NARW upcall production rates are higher in shipping noise, not lower, because the signal must overcome masking. Contact is non-optional.”,
+relevantSpecies: [“Orca”, “North Atlantic Right Whale”, “Sperm Whale”, “Humpback Whale”, “Pilot Whale”],
+classImplication: “CONTACT class. Rising-contour design optimized for signal/noise ratio in coastal environments.”,
+featureSignature: “Regular IPI, rising or complex contour, moderate urgency, moderate frequency.”,
+},
+{
+id: “prey_distribution”,
+label: “Patchy, Unpredictable Prey Distribution”,
+description: “Marine prey aggregations (krill, fish schools, squid patches) are temporally and spatially labile. A patch that exists at 0900 may have dispersed by 1200. A pod’s optimal foraging strategy requires rapid group-wide updates about prey contact — the information has a short time-value window. This drives foraging coordination signals to be high-urgency, high-repetition, short-duration bursts. Information density per unit time is maximized. Odontocetes have the additional advantage that their echolocation IS the foraging coordination signal — locating and announcing are the same acoustic act.”,
+relevantSpecies: [“Orca”, “Humpback Whale”, “False Killer Whale”, “Bottlenose Dolphin”, “Spinner Dolphin”],
+classImplication: “FORAGE class. High urgency index is diagnostic. Click trains and burst-pulses are the signature.”,
+featureSignature: “High urgency (> 0.55), high repetition rate, short duration per unit, IPI compressed during prey approach.”,
+},
+{
+id: “seasonal_migration”,
+label: “Seasonal Migration & Navigation Synchronization”,
+description: “Humpback whales migrate 8,000+ km between Antarctic feeding grounds and tropical breeding grounds. Blue whales cross entire ocean basins. Navigation requires maintaining heading cohesion across a spread-out pod with no visual reference. The slow IPI (2000–18000ms) reflects the temporal scale of navigation corrections — measured in minutes, not seconds. Contact calls are too fast; broadcast songs are too complex. Navigation is a separate behavioral class with a distinct acoustic signature.”,
+relevantSpecies: [“Humpback Whale”, “Blue Whale”, “Fin Whale”, “Sei Whale”],
+classImplication: “NAVIGATE class. Slow IPI + low frequency + flat contour = heading persistence signal.”,
+featureSignature: “pf < 200Hz, IPI 2000–18000ms, flat contour, moderate source level, long range.”,
+},
+{
+id: “sexual_selection”,
+label: “Sexual Selection & Fitness Advertisement”,
+description: “Broadcast signals are the only class driven by reproductive rather than immediate coordination imperatives. Humpback whale song complexity increases over the breeding season and evolves through cultural transmission across populations. Song complexity correlates with reproductive success. The hierarchical structure (units → phrases → themes → songs) is the acoustic signature of cognitive capacity display. This is fundamentally different from coordination signals: broadcast is about advertising to an unknown audience, not coordinating with known pod members.”,
+relevantSpecies: [“Humpback Whale”, “Bowhead Whale”, “Blue Whale”, “Fin Whale”, “Omura’s Whale”],
+classImplication: “BROADCAST class. Low urgency, complex contour, long duration = fitness display.”,
+featureSignature: “Complex contour, duration > 6s, urgency < 0.20, IPI variable (6–60s).”,
+},
+{
+id: “cultural_transmission”,
+label: “Cultural Transmission & Dialect Formation”,
+description: “Cetacean acoustic repertoires are not fully genetically encoded — they require learning and are transmitted through social networks. Orca discrete calls are acquired through matrilineal transmission; pods that split from a common ancestor retain dialects that diverge over generations. Humpback whale songs change in synchronized waves across entire ocean basins — a new phrase type spreads from a source population to all populations within 2 years. Cultural transmission creates a second layer of constraint on signal design: signals must be learnable, transmissible, and distinctive enough to maintain dialect identity across noise environments.”,
+relevantSpecies: [“Orca”, “Humpback Whale”, “Bottlenose Dolphin”, “Short-finned Pilot Whale”],
+classImplication: “CONTACT (dialect maintenance) and BROADCAST (cultural song evolution) classes primarily.”,
+featureSignature: “Stereotyped within-population, variable across populations. Dialect markers in contour shape.”,
+},
+{
+id: “juvenile_acquisition”,
+label: “Juvenile Acquisition Trajectory”,
+description: “Adult cetacean signals are compressed, optimized outputs of a developmental process that takes 2–10 years. Calves begin producing approximate versions of adult signals and converge on adult form through feedback from behavioral consequences. A NARW calf producing an approximate upcall receives contact responses from pod members when the approximation is functional — this reinforces the acoustic form. No published study has systematically tracked this call-attempt → behavioral-response → call-modification cycle. This is the primary empirical gap in cetacean language research.”,
+relevantSpecies: [“All social species — especially NARW, Orca, Bottlenose Dolphin, Humpback”],
+classImplication: “Applies to all classes. Juvenile versions of each class exist and are acoustically distinguishable.”,
+featureSignature: “Juvenile signals: higher frequency, more variable contour, wider frequency range, lower source level.”,
+},
+{
+id: “predator_avoidance”,
+label: “Predator Avoidance Frequency Strategy”,
+description: “Harbour porpoises produce narrow-band high-frequency clicks (NBHF) at 125–135kHz — above orca hearing range (< 100kHz). This frequency band provides echolocation function while remaining acoustically invisible to their primary predator. The constraint shapes the entire signal design: NBHF is less efficient for long-range echolocation than lower frequencies, but the predator-avoidance benefit outweighs the echolocation cost. This is the clearest documented case of a predation constraint directly shaping cetacean acoustic signal frequency.”,
+relevantSpecies: [“Harbour Porpoise”, “Dall’s Porpoise”, “Commerson’s Dolphin”, “Vaquita”],
+classImplication: “FORAGE at NBHF range. These species produce no long-range navigation or contact signals detectable by orca.”,
+featureSignature: “pf > 100kHz, narrow frequency band (< 20kHz bandwidth), short duration.”,
+},
+],
+
+// ── ANTHROPOGENIC CONSTRAINTS ──────────────────────────────────
+anthropogenic: [
+{
+id: “shipping_noise”,
+label: “Chronic Shipping Noise”,
+description: “Global shipping produces continuous broadband underwater noise at 50–500Hz — precisely overlapping the frequency range of baleen whale contact and navigation signals. NARW upcall detection rates drop by 40–70% during high-traffic periods at Stellwagen Bank. Some populations have documented upward frequency shifts in contact calls — driven not by selection but by within-lifetime acoustic adaptation. CetaSignal classifier performance degrades in high-shipping-noise environments because ambient noise masks the frequency features that distinguish CONTACT from NAVIGATE.”,
+relevantSpecies: [“North Atlantic Right Whale”, “Fin Whale”, “Blue Whale”, “Indo-Pacific Humpback Dolphin”],
+classImplication: “CONTACT and NAVIGATE class detection degraded. High false-negative rate in shipping corridors.”,
+featureSignature: “Increased call frequency (upward shift), increased source level (Lombard effect), reduced call rate.”,
+},
+],
+};
+
+// Convenience: flat array of all constraints with domain label
+export const ALL_CONSTRAINTS = [
+…CONSTRAINTS.physical.map(c => ({ …c, domain: “physical” })),
+…CONSTRAINTS.biological.map(c => ({ …c, domain: “biological” })),
+…CONSTRAINTS.anthropogenic.map(c => ({ …c, domain: “anthropogenic” })),
+];
+
+// Domain metadata for display
+export const CONSTRAINT_DOMAINS = {
+physical: { label: “Physical”, color: “#3A7BD5”, count: CONSTRAINTS.physical.length },
+biological: { label: “Biological”, color: “#44C88A”, count: CONSTRAINTS.biological.length },
+anthropogenic: { label: “Anthropogenic”, color: “#FF6B6B”, count: CONSTRAINTS.anthropogenic.length },
+};
